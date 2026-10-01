@@ -39,6 +39,22 @@ add_executable(
   src/test_terrain_analyzer.cpp
 )
 
+add_executable(
+  terrain_analyzer_node
+  src/terrain_analyzer_node.cpp
+)
+
+target_link_libraries(
+  terrain_analyzer_node
+  terrain_analyzer_core
+)
+
+ament_target_dependencies(
+  terrain_analyzer_node
+  rclcpp
+  sensor_msgs
+)
+
 target_link_libraries(
   test_terrain_analyzer
   terrain_analyzer_core
@@ -48,6 +64,7 @@ install(
   TARGETS
     terrain_analyzer_core
     test_terrain_analyzer
+    terrain_analyzer_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
