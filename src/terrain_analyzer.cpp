@@ -20,7 +20,7 @@ namespace terrain_analyzer
         //计算质心
         const Eigen::Vector3d centroid = computeCentroid(points);
         //计算协方差矩阵
-        const Eigen::Vector3d covariance = computeCovariance(points,centroid);
+        const Eigen::Matrix3d covariance = computeCovariance(points,centroid);
 
         //PCA
         Eigen::Vector3d eigenvalues;
@@ -51,7 +51,7 @@ namespace terrain_analyzer
         //PCA平面残差统计
         computeResidualStatistics(points,centroid,result.normal,result.residual_mean,result.residual_std,result.outlier_ratio);
 
-        result.vaild = true;
+        result.valid = true;
 
         return result;
          
@@ -86,7 +86,7 @@ namespace terrain_analyzer
         }
         covariance /= static_cast<double>(points.size());
 
-        returen covariance;
+        return covariance;
     }
     //PCA
     bool TerrainAnalyzer::computePCA(
@@ -144,7 +144,7 @@ namespace terrain_analyzer
         const double lambda2 = eigenvalues(1);
         const double lambda3 = eigenvalues(0);
 
-        if (lambda < 1e-12){
+        if (lambda1 < 1e-12){
             return 0.0;
         }
         return (lambda2 - lambda3) / lambda1;
@@ -198,7 +198,7 @@ namespace terrain_analyzer
         const std::vector<Eigen::Vector3d> & points,
         const Eigen::Vector3d & centroid,
         const Eigen::Vector3d & normal,
-        double & maen,
+        double & mean,
         double & stddev,
         double & outlier_ratio
     )
@@ -207,7 +207,7 @@ namespace terrain_analyzer
         stddev = 0.0;
         outlier_ratio = 0.0;
 
-        if (points.emptyZ()){
+        if (points.empty()){
             return;
         }
 
@@ -215,8 +215,7 @@ namespace terrain_analyzer
         residuals.reserve(points.size());
 
         for (const auto & point : points){
-            const double residuals =
-            std::abs(normal.dot(point - centroid));
+            const double residual = normal.dot(point - centroid);
 
             residuals.push_back(residual);
             mean += residual;

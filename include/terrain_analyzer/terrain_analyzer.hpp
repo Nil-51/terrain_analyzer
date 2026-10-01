@@ -35,7 +35,7 @@ namespace terrain_analyzer
         double residual_std = 0.0;
 
         //高斯异常点比例
-        double outlier = 0.0;
+        double outlier_ratio = 0.0;
 
         //是否计算成功
         bool valid = false;
@@ -62,7 +62,7 @@ class TerrainAnalyzer
         Eigen::Matrix3d & eigenvectors
       );
 
-      double compteSlope(const Rigen::Vector3d & normal);
+      double computeSlope(const Eigen::Vector3d & normal);
       double computeLinearity(const Eigen::Vector3d & eigenvalues);
       double computePlanarity(const Eigen::Vector3d & eigenvalues);
       double computeScattering(const Eigen::Vector3d & eigenvalues);
