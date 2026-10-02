@@ -53,7 +53,7 @@ namespace terrain_analyzer
 
         result.valid = true;
 
-        return result;
+        return result;  
          
     }
     //质心计算
