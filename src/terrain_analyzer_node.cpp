@@ -122,6 +122,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
 
         min_points_ = this->declare_parameter<int>("min_points",30);
         cell_size_ = this->declare_parameter<double>("cell_size",0.5);
+        map_radius_ = this->declare_parameter<double>("map_radius",5.0);
 
         subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             pointcloud_topic_,
@@ -135,6 +136,45 @@ class TerrainAnalyzerNode : public rclcpp::Node
         RCLCPP_INFO(this->get_logger(),"PointCloud topic: %s",pointcloud_topic_.c_str());
       }
     private:
+      TerrainCell fuseTerrainCell(
+        const TerrainCell & old_cell,
+        const TerrainCell & new_cell
+      )
+      {
+        const double alpha = 0.3;
+
+        TerrainCell fused = old_cell;
+
+        fused.x = new_cell.x;
+        fused.y = new_cell.y;
+        fused.z = (1.0 - alpha) * old_cell.z + alpha * new_cell.z;
+
+        fused.lambda1 = (1.0 - alpha) * old_cell.lambda1 + alpha * new_cell.lambda1;
+        fused.lambda2 = (1.0 - alpha) * old_cell.lambda2 + alpha * new_cell.lambda2;
+        fused.lambda3 = (1.0 - alpha) * old_cell.lambda3 + alpha * new_cell.lambda3;
+
+        fused.linearity = (1.0 - alpha) * old_cell.linearity + alpha * new_cell.linearity;
+        fused.planarity = (1.0 - alpha) * old_cell.planarity + alpha * new_cell.planarity;
+        fused.scattering = (1.0 - alpha) * old_cell.scattering + alpha * new_cell.scattering; 
+
+        fused.slope = (1.0 - alpha) * old_cell.slope + alpha * new_cell.slope;
+
+        fused.height_std = (1.0 - alpha) * old_cell.height_std + alpha * new_cell.height_std;
+
+        fused.residual_mean = (1.0 - alpha) * old_cell.residual_mean + alpha * new_cell.residual_mean;
+        fused.residual_std = (1.0 - alpha) * old_cell.residual_std + alpha * new_cell.residual_std;
+
+        fused.outlier_ratio = (1.0 - alpha) * old_cell.outlier_ratio + alpha * new_cell.outlier_ratio;
+
+        fused.point_count = new_cell.point_count;
+        fused.normal = ((1.0 - alpha) * old_cell.normal + alpha * new_cell.normal).normalized();
+
+        fused.valid = true;
+
+        fused.terrain_type = classifyTerrain(fused);
+        
+        return fused;
+      }
       void pointCloudCallback(
         const sensor_msgs::msg::PointCloud2::SharedPtr msg
       )
@@ -282,10 +322,86 @@ class TerrainAnalyzerNode : public rclcpp::Node
             RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | " "center=(%.2f,%.2f,%.2f) | " "type=%s | " "points=%zu | " "slope=%.2f deg | " "normal=(%.3f,%.3f,%.3f) | " "planarity=%.3f | " "scattering=%.3f | " "lambda=[%.5f, %.5f, %.5f] | " "height_std=%.5f",index.x,index.y,cell.x,cell.y,cell.z,terrainTypeToString(cell.terrain_type),grid_points.size(),cell.slope * 180.0 / M_PI,cell.normal.x(),cell.normal.y(),cell.normal.z(),cell.planarity,cell.scattering,cell.lambda1,cell.lambda2,cell.lambda3,cell.height_std);
         }
 
-        terrain_analyzer::msg::TerrainAnalysis terrain_msg;
-        terrain_msg.header = msg->header;
+        // terrain_analyzer::msg::TerrainAnalysis terrain_msg;
+        // terrain_msg.header = msg->header;
+        // for (const auto & cell : terrain_cells)
+        // {
+        //     terrain_msg.x.push_back(cell.x);
+        //     terrain_msg.y.push_back(cell.y);
+        //     terrain_msg.z.push_back(cell.z);
+
+        //     terrain_msg.lambda1.push_back(cell.lambda1);
+        //     terrain_msg.lambda2.push_back(cell.lambda2);
+        //     terrain_msg.lambda3.push_back(cell.lambda3);
+
+        //     terrain_msg.linearity.push_back(fused_cell.linearity);
+        //     terrain_msg.planarity.push_back(fused_cell.planarity);
+        //     terrain_msg.scattering.push_back(fused_cell.scattering);
+
+        //     terrain_msg.normal_x.push_back(fused_cell.normal.x());
+        //     terrain_msg.normal_y.push_back(fused_cell.normal.y());
+        //     terrain_msg.normal_z.push_back(fused_cell.normal.z());
+
+        //     terrain_msg.slope.push_back(fused_cell.slope);
+
+        //     terrain_msg.mean_height.push_back(fused_cell.z);
+        //     terrain_msg.height_std.push_back(fused_cell.height_std);
+
+        //     terrain_msg.residual_mean.push_back(fused_cell.residual_mean);
+        //     terrain_msg.residual_std.push_back(fused_cell.residual_std);
+
+        //     terrain_msg.outlier_ratio.push_back(fused_cell.outlier_ratio);
+        //     terrain_msg.terrain_type.push_back(fused_cell.terrain_type);
+
+        //     terrain_msg.point_count.push_back(static_cast<uint32_t>(fused_cell.point_count));
+        // }
+
+        // terrain_pub_->publish(terrain_msg);
         for (const auto & cell : terrain_cells)
         {
+            const int grid_x = static_cast<int>(std::floor(cell.x / cell_size_));
+            const int grid_y = static_cast<int>(std::floor(cell.y / cell_size_));
+
+            GridIndex index{grid_x, grid_y};
+
+            auto it = terrain_map_.find(index);
+
+            if (it == terrain_map_.end())
+            {
+                terrain_map_[index] = cell;
+            }
+            else
+            {
+                it->second = fuseTerrainCell(it->second, cell);
+            }
+        }
+        for (auto it = terrain_map_.begin(); it != terrain_map_.end(); )
+        {
+            const auto & cell = it->second;
+            const double distance = std::sqrt(cell.x * cell.x + cell.y * cell.y);
+
+            if (distance > map_radius_)
+            {
+                it = terrain_map_.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        terrain_analyzer::msg::TerrainAnalysis terrain_msg;
+        terrain_msg.header = msg->header;
+
+        for (const auto & item : terrain_map_)
+        {
+            const auto & cell = item.second;
+
+            if (!cell.valid)
+            {
+                continue;
+            }
+
             terrain_msg.x.push_back(cell.x);
             terrain_msg.y.push_back(cell.y);
             terrain_msg.z.push_back(cell.z);
@@ -311,16 +427,34 @@ class TerrainAnalyzerNode : public rclcpp::Node
             terrain_msg.residual_std.push_back(cell.residual_std);
 
             terrain_msg.outlier_ratio.push_back(cell.outlier_ratio);
+
             terrain_msg.terrain_type.push_back(cell.terrain_type);
 
             terrain_msg.point_count.push_back(static_cast<uint32_t>(cell.point_count));
         }
         terrain_pub_->publish(terrain_msg);
+        
+        for (auto it = terrain_map_.begin(); it != terrain_map_.end(); )
+        {
+            const auto & cell = it->second;
+            const double distance = std::sqrt(cell.x * cell.x + cell.y * cell.y);
+            
+            if (distance > map_radius_)
+            {
+                it = terrain_map_.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
 
         visualization_msgs::msg::MarkerArray marker_array;
+
         int marker_id = 0;
-        for (const auto & cell : terrain_cells)
+        for (const auto & item : terrain_map_)
         {
+            const auto & cell = item.second;
             if (!cell.valid)
             {
                 continue;
@@ -388,6 +522,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
             marker.color.a = 0.8;
             marker_array.markers.push_back(marker);                                                                                   
         }
+        RCLCPP_INFO(this->get_logger(),"Terrain map cell: %zu",terrain_map_.size());
         marker_pub_->publish(marker_array);
 
         RCLCPP_INFO(this->get_logger(),"Terrain summary: " "FLAT=%d | " "SLOPE=%d | " "ROUGH=%d | " "IRREGULAR=%d | " "EDGE=%d | " "UNKNOWN=%d", flat_count,slope_count,rough_count,irregular_count,edge_count,unknown_count);
@@ -396,8 +531,11 @@ class TerrainAnalyzerNode : public rclcpp::Node
       std::string pointcloud_topic_;
       int min_points_;
       double cell_size_;
+      double map_radius_;
 
       terrain_analyzer::TerrainAnalyzer analyzer_;
+
+      std::unordered_map<GridIndex, TerrainCell, GridIndexHash> terrain_map_;
 
       rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
       rclcpp::Publisher<terrain_analyzer::msg::TerrainAnalysis>::SharedPtr terrain_pub_;
