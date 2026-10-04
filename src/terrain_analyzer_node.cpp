@@ -4,6 +4,7 @@
 #include<rclcpp/rclcpp.hpp>
 #include<sensor_msgs/msg/point_cloud2.hpp>
 #include<sensor_msgs/point_cloud2_iterator.hpp>
+#include<visualization_msgs/msg/marker_array.hpp>
 
 #include<Eigen/Dense>
 
@@ -128,6 +129,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
             std::bind(&TerrainAnalyzerNode::pointCloudCallback,this,std::placeholders::_1)
         );
         terrain_pub_= this->create_publisher<terrain_analyzer::msg::TerrainAnalysis>("/terrain_analysis",10);
+        marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/terrain_markers",10);
 
         RCLCPP_INFO(this->get_logger(),"Terrain Analyzer started.");
         RCLCPP_INFO(this->get_logger(),"PointCloud topic: %s",pointcloud_topic_.c_str());
@@ -281,9 +283,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
         }
 
         terrain_analyzer::msg::TerrainAnalysis terrain_msg;
-
         terrain_msg.header = msg->header;
-
         for (const auto & cell : terrain_cells)
         {
             terrain_msg.x.push_back(cell.x);
@@ -317,6 +317,79 @@ class TerrainAnalyzerNode : public rclcpp::Node
         }
         terrain_pub_->publish(terrain_msg);
 
+        visualization_msgs::msg::MarkerArray marker_array;
+        int marker_id = 0;
+        for (const auto & cell : terrain_cells)
+        {
+            if (!cell.valid)
+            {
+                continue;
+            }
+            visualization_msgs::msg::Marker marker;
+
+            marker.header.stamp = this->now();
+            marker.header.frame_id = "base_link";
+
+            marker.ns = "terrain";
+            marker.id = marker_id++;
+
+            marker.type = visualization_msgs::msg::Marker::CUBE;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+
+            marker.pose.position.x = cell.x;
+            marker.pose.position.y = cell.y;
+            marker.pose.position.z = cell.z;
+
+            marker.pose.orientation.x = 0.0;
+            marker.pose.orientation.y = 0.0;
+            marker.pose.orientation.z = 0.0;
+            marker.pose.orientation.w = 1.0;
+
+            marker.scale.x = cell_size_;
+            marker.scale.y = cell_size_;
+
+            marker.scale.z = 0.05;
+
+            if (cell.terrain_type == 1)
+            {
+                marker.color.r = 0.0;
+                marker.color.g = 1.0;
+                marker.color.b = 0.0;
+            }
+            else if (cell.terrain_type == 2)
+            {
+                marker.color.r = 1.0;
+                marker.color.g = 1.0;
+                marker.color.b = 0.0;
+            }
+            else if (cell.terrain_type == 3)
+            {
+                marker.color.r = 1.0;
+                marker.color.g = 0.0;
+                marker.color.b = 0.0;
+            }else if (cell.terrain_type == 4)
+            {
+                marker.color.r = 1.0;
+                marker.color.g = 0.5;
+                marker.color.b = 0.0;
+            }else if (cell.terrain_type == 5)
+            {
+                marker.color.r = 0.0;
+                marker.color.g = 0.5;
+                marker.color.b = 1.0;
+            }
+            else
+            {
+                marker.color.r = 0.5;
+                marker.color.g = 0.5;
+                marker.color.b = 0.5;
+            }
+
+            marker.color.a = 0.8;
+            marker_array.markers.push_back(marker);                                                                                   
+        }
+        marker_pub_->publish(marker_array);
+
         RCLCPP_INFO(this->get_logger(),"Terrain summary: " "FLAT=%d | " "SLOPE=%d | " "ROUGH=%d | " "IRREGULAR=%d | " "EDGE=%d | " "UNKNOWN=%d", flat_count,slope_count,rough_count,irregular_count,edge_count,unknown_count);
       }  
 
@@ -328,6 +401,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
 
       rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
       rclcpp::Publisher<terrain_analyzer::msg::TerrainAnalysis>::SharedPtr terrain_pub_;
+      rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 };
 
 int main(int argc,char ** argv)
