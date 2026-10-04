@@ -15,12 +15,21 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
 include_directories(
   include
 )
 
-add_library(terrain_analyzer_core
+rosidl_generate_interfaces(
+  ${PROJECT_NAME}
+  "msg/TerrainAnalysis.msg"
+  DEPENDENCIES
+  std_msgs
+)
+
+add_library(
+  terrain_analyzer_core
   src/terrain_analyzer.cpp
 )
 
@@ -39,6 +48,12 @@ add_executable(
   src/test_terrain_analyzer.cpp
 )
 
+target_link_libraries(
+  test_terrain_analyzer
+  terrain_analyzer_core
+  Eigen3::Eigen
+)
+
 add_executable(
   terrain_analyzer_node
   src/terrain_analyzer_node.cpp
@@ -47,6 +62,7 @@ add_executable(
 target_link_libraries(
   terrain_analyzer_node
   terrain_analyzer_core
+  Eigen3::Eigen
 )
 
 ament_target_dependencies(
@@ -55,14 +71,27 @@ ament_target_dependencies(
   sensor_msgs
 )
 
+rosidl_get_typesupport_target(
+  cpp_typesupport_target
+  ${PROJECT_NAME}
+  "rosidl_typesupport_cpp"
+)
+
 target_link_libraries(
-  test_terrain_analyzer
-  terrain_analyzer_core
+  terrain_analyzer_node
+  "${cpp_typesupport_target}"
 )
 
 install(
   TARGETS
     terrain_analyzer_core
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib
+)
+
+install(
+  TARGETS
     test_terrain_analyzer
     terrain_analyzer_node
   DESTINATION lib/${PROJECT_NAME}
@@ -71,6 +100,10 @@ install(
 install(
   DIRECTORY include/
   DESTINATION include/
+)
+
+ament_export_dependencies(
+  rosidl_default_runtime
 )
 
 ament_package()

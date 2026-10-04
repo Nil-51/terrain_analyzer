@@ -1,32 +1,31 @@
-std_msgs/Header Header
+std_msgs/Header header
 
-float64 lambda1
-float64 lambda2
-float64 lambda3
+float64[] x 
+float64[] y 
+float64[] z 
 
-float64 linearity
-float64 planarity
-float64 scattering
+float64[] lambda1
+float64[] lambda2
+float64[] lambda3
 
-float64 normal_x
-float64 normal_y
-float64 normal_z
+float64[] linearity
+float64[] planarity
+float64[] scattering
 
-float64 slope
+float64[] normal_x
+float64[] normal_y
+float64[] normal_z
 
-float64 mean_height
-float64 height_std
+float64[] slope
 
-float64 residual_mean
-float64 residual_std
+float64[] mean_height
+float64[] height_std
 
-float64 outlier_ratio
+float64[] residual_mean
+float64[] residual_std
 
-unit8 UNKNOWN=0
-unit8 FLAT=1
-unit8 SLOPE=2
-unit8 ROUGH=3
-unit8 IRREGULAR=4
-unit8 EDGE=5
+float64[] outlier_ratio
 
-unit8 terrain_type
+uint8[] terrain_type
+
+uint32[] point_count

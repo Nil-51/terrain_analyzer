@@ -1,4 +1,5 @@
 #include "terrain_analyzer/terrain_analyzer.hpp"
+#include "terrain_analyzer/msg/terrain_analysis.hpp"
 
 #include<rclcpp/rclcpp.hpp>
 #include<sensor_msgs/msg/point_cloud2.hpp>
@@ -126,6 +127,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
             rclcpp::SensorDataQoS(),
             std::bind(&TerrainAnalyzerNode::pointCloudCallback,this,std::placeholders::_1)
         );
+        terrain_pub_= this->create_publisher<terrain_analyzer::msg::TerrainAnalysis>("/terrain_analysis",10);
 
         RCLCPP_INFO(this->get_logger(),"Terrain Analyzer started.");
         RCLCPP_INFO(this->get_logger(),"PointCloud topic: %s",pointcloud_topic_.c_str());
@@ -275,10 +277,48 @@ class TerrainAnalyzerNode : public rclcpp::Node
             terrain_cells.push_back(cell);
 
             //RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | points=%zu |" "slope=&.2f deg | planarity=%.3f | scattering=%.3f",index.x,index.y,grid_points.size(),result.slope * 180.0 / M_PI,result.planarity,result.scattering);
-            RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | type=%s | points=%zu | " "slope=%.2f deg | planarity=%.3f | scattering=%.3f | " "lambda=[%.5f, %.5f, %.5f] | " "height_std=%.5f",index.x,index.y,terrainTypeToString(cell.terrain_type),grid_points.size(),cell.slope * 180.0 / M_PI,cell.planarity,cell.scattering,cell.lambda1,cell.lambda2,cell.lambda3,cell.height_std);
+            RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | " "center=(%.2f,%.2f,%.2f) | " "type=%s | " "points=%zu | " "slope=%.2f deg | " "normal=(%.3f,%.3f,%.3f) | " "planarity=%.3f | " "scattering=%.3f | " "lambda=[%.5f, %.5f, %.5f] | " "height_std=%.5f",index.x,index.y,cell.x,cell.y,cell.z,terrainTypeToString(cell.terrain_type),grid_points.size(),cell.slope * 180.0 / M_PI,cell.normal.x(),cell.normal.y(),cell.normal.z(),cell.planarity,cell.scattering,cell.lambda1,cell.lambda2,cell.lambda3,cell.height_std);
         }
+
+        terrain_analyzer::msg::TerrainAnalysis terrain_msg;
+
+        terrain_msg.header = msg->header;
+
+        for (const auto & cell : terrain_cells)
+        {
+            terrain_msg.x.push_back(cell.x);
+            terrain_msg.y.push_back(cell.y);
+            terrain_msg.z.push_back(cell.z);
+
+            terrain_msg.lambda1.push_back(cell.lambda1);
+            terrain_msg.lambda2.push_back(cell.lambda2);
+            terrain_msg.lambda3.push_back(cell.lambda3);
+
+            terrain_msg.linearity.push_back(cell.linearity);
+            terrain_msg.planarity.push_back(cell.planarity);
+            terrain_msg.scattering.push_back(cell.scattering);
+
+            terrain_msg.normal_x.push_back(cell.normal.x());
+            terrain_msg.normal_y.push_back(cell.normal.y());
+            terrain_msg.normal_z.push_back(cell.normal.z());
+
+            terrain_msg.slope.push_back(cell.slope);
+
+            terrain_msg.mean_height.push_back(cell.z);
+            terrain_msg.height_std.push_back(cell.height_std);
+
+            terrain_msg.residual_mean.push_back(cell.residual_mean);
+            terrain_msg.residual_std.push_back(cell.residual_std);
+
+            terrain_msg.outlier_ratio.push_back(cell.outlier_ratio);
+            terrain_msg.terrain_type.push_back(cell.terrain_type);
+
+            terrain_msg.point_count.push_back(static_cast<uint32_t>(cell.point_count));
+        }
+        terrain_pub_->publish(terrain_msg);
+
         RCLCPP_INFO(this->get_logger(),"Terrain summary: " "FLAT=%d | " "SLOPE=%d | " "ROUGH=%d | " "IRREGULAR=%d | " "EDGE=%d | " "UNKNOWN=%d", flat_count,slope_count,rough_count,irregular_count,edge_count,unknown_count);
-      }
+      }  
 
       std::string pointcloud_topic_;
       int min_points_;
@@ -286,8 +326,8 @@ class TerrainAnalyzerNode : public rclcpp::Node
 
       terrain_analyzer::TerrainAnalyzer analyzer_;
 
-      rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr
-        subscription_;
+      rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
+      rclcpp::Publisher<terrain_analyzer::msg::TerrainAnalysis>::SharedPtr terrain_pub_;
 };
 
 int main(int argc,char ** argv)
