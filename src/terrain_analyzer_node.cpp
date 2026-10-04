@@ -53,6 +53,7 @@ struct TerrainCell
     bool valid = false;
 
     double confidence = 0.0;
+    double traversability = 0.0;
 
     uint8_t terrain_type = 0;
 };
@@ -169,6 +170,8 @@ class TerrainAnalyzerNode : public rclcpp::Node
         fused.outlier_ratio = (1.0 - alpha) * old_cell.outlier_ratio + alpha * new_cell.outlier_ratio;
 
         fused.confidence = (1.0 - alpha) * old_cell.confidence + alpha * new_cell.confidence;
+
+        fused.traversability = (1.0 - alpha) * old_cell.traversability + alpha * new_cell.traversability;
 
         fused.point_count = new_cell.point_count;
         fused.normal = ((1.0 - alpha) * old_cell.normal + alpha * new_cell.normal).normalized();
@@ -300,6 +303,20 @@ class TerrainAnalyzerNode : public rclcpp::Node
             const double outlier_confidence = std::max(0.0, 1.0 - std::min(cell.outlier_ratio, 1.0));
 
             cell.confidence = 0.5 * point_confidence + 0.3 * planarity_confidence + 0.2 * outlier_confidence;
+
+            const double max_traversable_slope = 30.0 * M_PI / 180.0;
+
+            const double slope_score = std::max(0.0, 1.0 - cell.slope / (30.0 * M_PI / 180.0));
+            const double roughness_score = std::max(0.0, 1.0 - std::min(cell.scattering / 0.1, 1.0));
+
+            if (cell.slope > max_traversable_slope)
+            {
+                cell.traversability = 0.0;
+            }
+            else
+            {
+                cell.traversability = 0.5 * slope_score + 0.3 * roughness_score + 0.2 * cell.confidence;
+            }
 
             cell.valid = true;
 
@@ -443,6 +460,8 @@ class TerrainAnalyzerNode : public rclcpp::Node
             terrain_msg.point_count.push_back(static_cast<uint32_t>(cell.point_count));
 
             terrain_msg.confidence.push_back(cell.confidence);
+
+            terrain_msg.traversability.push_back(cell.traversability);
         }
         terrain_pub_->publish(terrain_msg);
         
@@ -496,40 +515,11 @@ class TerrainAnalyzerNode : public rclcpp::Node
 
             marker.scale.z = 0.05;
 
-            if (cell.terrain_type == 1)
-            {
-                marker.color.r = 0.0;
-                marker.color.g = 1.0;
-                marker.color.b = 0.0;
-            }
-            else if (cell.terrain_type == 2)
-            {
-                marker.color.r = 1.0;
-                marker.color.g = 1.0;
-                marker.color.b = 0.0;
-            }
-            else if (cell.terrain_type == 3)
-            {
-                marker.color.r = 1.0;
-                marker.color.g = 0.0;
-                marker.color.b = 0.0;
-            }else if (cell.terrain_type == 4)
-            {
-                marker.color.r = 1.0;
-                marker.color.g = 0.5;
-                marker.color.b = 0.0;
-            }else if (cell.terrain_type == 5)
-            {
-                marker.color.r = 0.0;
-                marker.color.g = 0.5;
-                marker.color.b = 1.0;
-            }
-            else
-            {
-                marker.color.r = 0.5;
-                marker.color.g = 0.5;
-                marker.color.b = 0.5;
-            }
+            const double t = std::max(0.0, std::min(cell.traversability, 1.0));
+
+            marker.color.r = 1.0 - t;
+            marker.color.g = t;
+            marker.color.b = 0.0;
 
             marker.color.a = 0.8;
             marker_array.markers.push_back(marker);                                                                                   

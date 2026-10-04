@@ -31,3 +31,5 @@ uint8[] terrain_type
 uint32[] point_count
 
 float64[] confidence
+
+float64[] traversability
