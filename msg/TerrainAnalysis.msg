@@ -29,3 +29,5 @@ float64[] outlier_ratio
 uint8[] terrain_type
 
 uint32[] point_count
+
+float64[] confidence

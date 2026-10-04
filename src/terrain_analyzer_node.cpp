@@ -52,6 +52,8 @@ struct TerrainCell
     std::size_t point_count = 0;
     bool valid = false;
 
+    double confidence = 0.0;
+
     uint8_t terrain_type = 0;
 };
 
@@ -165,6 +167,8 @@ class TerrainAnalyzerNode : public rclcpp::Node
         fused.residual_std = (1.0 - alpha) * old_cell.residual_std + alpha * new_cell.residual_std;
 
         fused.outlier_ratio = (1.0 - alpha) * old_cell.outlier_ratio + alpha * new_cell.outlier_ratio;
+
+        fused.confidence = (1.0 - alpha) * old_cell.confidence + alpha * new_cell.confidence;
 
         fused.point_count = new_cell.point_count;
         fused.normal = ((1.0 - alpha) * old_cell.normal + alpha * new_cell.normal).normalized();
@@ -290,6 +294,12 @@ class TerrainAnalyzerNode : public rclcpp::Node
             cell.outlier_ratio = grid_result.outlier_ratio;
 
             cell.point_count = grid_points.size();
+
+            const double point_confidence = std::min(static_cast<double>(grid_points.size()) / 200.0, 1.0);
+            const double planarity_confidence = std::max(0.0, std::min(cell.planarity, 1.0));
+            const double outlier_confidence = std::max(0.0, 1.0 - std::min(cell.outlier_ratio, 1.0));
+
+            cell.confidence = 0.5 * point_confidence + 0.3 * planarity_confidence + 0.2 * outlier_confidence;
 
             cell.valid = true;
 
@@ -431,6 +441,8 @@ class TerrainAnalyzerNode : public rclcpp::Node
             terrain_msg.terrain_type.push_back(cell.terrain_type);
 
             terrain_msg.point_count.push_back(static_cast<uint32_t>(cell.point_count));
+
+            terrain_msg.confidence.push_back(cell.confidence);
         }
         terrain_pub_->publish(terrain_msg);
         
