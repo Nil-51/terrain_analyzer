@@ -2,7 +2,7 @@
 
 基于**协方差矩阵、PCA 主成分分析与高斯统计**的地形分析 ROS 2 功能包。
 
-节点将输入点云按 XY 平面栅格化，对每个栅格内的点集做 PCA 平面拟合与几何特征提取，得到特征值、几何特征、法向量、坡度、高度统计、平面残差与异常点比例，并据此分类地形类型（平地 / 斜坡 / 起伏 / 杂乱 / 边缘），维护一张带时序融合的局部地形栅格地图，向外发布自定义分析消息与可视化 Marker。
+节点将输入点云按 XY 平面栅格化，对每个栅格内的点集做 PCA 平面拟合与几何特征提取，得到特征值、几何特征、法向量、坡度、高度统计、平面残差与异常点比例，并据此分类地形类型（平地 / 斜坡 / 起伏 / 杂乱 / 边缘），维护一张带时序融合的局部地形栅格地图，向外发布自定义分析消息与可视化 Marker，并提供基于可通过性的 `OccupancyGrid` 代价地图转换逻辑。
 
 ---
 
@@ -22,6 +22,7 @@
 - **局部地图裁剪**：移除距原点超过 `map_radius` 的栅格。
 - **可视化**：发布 `MarkerArray`（CUBE），按可通过性由红（不可通过）到绿（可通过）着色。
 - **自定义消息**：发布 `terrain_analyzer/msg/TerrainAnalysis`。
+- **代价地图转换**：`publishTerrainCostmap()` 将局部地形图转换为 `nav_msgs/OccupancyGrid`，由 `traversability` 映射 0~100 代价值（当前 `pointCloudCallback` 未调用该函数）。
 
 ---
 
@@ -46,7 +47,7 @@ terrain_analyzer/
 
 | 目标 | 类型 | 说明 |
 | --- | --- | --- |
-| `terrain_analyzer_core` | 静态库 | 纯算法实现，不依赖 ROS |
+| `terrain_analyzer_core` | 共享库 | 纯算法实现，不依赖 ROS，构建为 `libterrain_analyzer_core.so` |
 | `terrain_analyzer_node` | 可执行 | ROS 2 订阅 / 建图 / 发布节点 |
 | `test_terrain_analyzer` | 可执行 | 使用合成数据的离线演示（仅依赖 `core` + Eigen） |
 | `terrain_analyzer/msg/TerrainAnalysis` | 消息接口 | 由 `rosidl_generate_interfaces` 生成 |
@@ -130,6 +131,16 @@ $$\text{fused} = (1-\alpha)\cdot\text{old} + \alpha\cdot\text{new}$$
 7. 移除距原点超过 `map_radius` 的栅格。
 8. 发布 `TerrainAnalysis`（取自融合后的局部地图）与 `MarkerArray`，并打印每格详情与类型汇总日志。
 
+> 当前代码中还定义了 `/terrain_costmap` 的 `nav_msgs/msg/OccupancyGrid` 发布器（QoS 深度 10）及 `publishTerrainCostmap()` 转换函数；但 `pointCloudCallback` 尚未调用该函数，因此运行节点时暂不会实际发布 `/terrain_costmap`。该函数生成的代价地图参数如下：
+>
+> - `resolution = cell_size`
+> - 栅格尺寸：`ceil(2 * map_radius / cell_size) × ceil(2 * map_radius / cell_size)`
+> - 原点：`(-map_radius, -map_radius, 0)`
+> - `frame_id = base_link`
+> - 未覆盖栅格为 `-1`
+> - 已覆盖栅格代价：`round((1 - clamp(traversability, 0, 1)) * 100)`
+> - `slope > 30°` 的栅格强制为 `100`
+
 ---
 
 ## 依赖与环境
@@ -145,6 +156,7 @@ $$\text{fused} = (1-\alpha)\cdot\text{old} + \alpha\cdot\text{new}$$
 rclcpp
 sensor_msgs
 std_msgs
+nav_msgs
 visualization_msgs
 rosidl_default_generators   # 构建工具
 rosidl_default_runtime      # 运行依赖

@@ -14,6 +14,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -71,6 +72,8 @@ ament_target_dependencies(
   terrain_analyzer_node
   rclcpp
   sensor_msgs
+  std_msgs
+  nav_msgs
   visualization_msgs
 )
 

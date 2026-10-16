@@ -4,6 +4,7 @@
 #include<rclcpp/rclcpp.hpp>
 #include<sensor_msgs/msg/point_cloud2.hpp>
 #include<sensor_msgs/point_cloud2_iterator.hpp>
+#include<nav_msgs/msg/occupancy_grid.hpp>
 #include<visualization_msgs/msg/marker_array.hpp>
 
 #include<Eigen/Dense>
@@ -11,6 +12,8 @@
 #include<cmath>
 #include<memory>
 #include<vector>
+#include<algorithm>
+#include<cstdint>
 
 #include<unordered_map>
 #include<functional>
@@ -134,11 +137,63 @@ class TerrainAnalyzerNode : public rclcpp::Node
         );
         terrain_pub_= this->create_publisher<terrain_analyzer::msg::TerrainAnalysis>("/terrain_analysis",10);
         marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/terrain_markers",10);
+        costmap_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/terrain_costmap",10);
 
         RCLCPP_INFO(this->get_logger(),"Terrain Analyzer started.");
         RCLCPP_INFO(this->get_logger(),"PointCloud topic: %s",pointcloud_topic_.c_str());
       }
     private:
+      void publishTerrainCostmap()
+      {
+        nav_msgs::msg::OccupancyGrid costmap;
+
+        costmap.header.stamp = this->now();
+        costmap.header.frame_id = "base_link";
+
+        costmap.info.resolution = static_cast<float>(cell_size_);
+
+        const int cells = static_cast<int>(std::ceil(2.0 * map_radius_ / cell_size_));
+
+        costmap.info.width = static_cast<uint32_t>(cells);
+        costmap.info.height = static_cast<uint32_t>(cells);
+
+        costmap.info.origin.position.x = -map_radius_;
+        costmap.info.origin.position.y = -map_radius_;
+        costmap.info.origin.position.z = 0.0;
+
+        costmap.info.origin.orientation.w = 1.0;
+
+        costmap.data.assign(static_cast<std::size_t>(cells) * cells, static_cast<int8_t>(-1));
+
+        for (const auto & item : terrain_map_)
+        {
+            const auto & cell = item.second;
+
+            if (!cell.valid)
+                continue;
+
+            const int grid_x = static_cast<int>(std::floor((cell.x + map_radius_) / cell_size_));
+            const int grid_y = static_cast<int>(std::floor((cell.y + map_radius_) / cell_size_));
+
+            if (grid_x < 0 || grid_y < 0 || grid_x >= cells || grid_y >= cells)
+            {
+                continue;
+            }
+            
+            const std::size_t index = static_cast<std::size_t>(grid_y) * cells + grid_x;
+            const double traversability = std::clamp(cell.traversability, 0.0, 1.0);
+            int cost = static_cast<int>(std::round((1.0 - traversability) * 100.0));
+
+            if (cell.slope > 30.0 * M_PI / 180.0)
+            {
+                cost = 100;
+            }
+            costmap.data[index] = static_cast<int8_t>(cost);
+        }
+        
+        costmap_pub_->publish(costmap);
+      }
+
       TerrainCell fuseTerrainCell(
         const TerrainCell & old_cell,
         const TerrainCell & new_cell
@@ -235,14 +290,6 @@ class TerrainAnalyzerNode : public rclcpp::Node
             return;
         }
 
-        // const auto result = analyzer_.analyze(points);
-        // if(!result.valid)
-        // {
-        //     RCLCPP_WARN(this->get_logger(),"Terrain analysis failed.");
-        //     return;
-        // }
-        // RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"points=%zu | slope=%.2f deg | " "planarity=%.3f | scattering=%.3f",points.size(),result.slope * 180.0 / M_PI,result.planarity,result.scattering);
-        
         std::vector<TerrainCell> terrain_cells;
         int flat_count = 0;
         int slope_count = 0;
@@ -345,45 +392,9 @@ class TerrainAnalyzerNode : public rclcpp::Node
 
             terrain_cells.push_back(cell);
 
-            //RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | points=%zu |" "slope=&.2f deg | planarity=%.3f | scattering=%.3f",index.x,index.y,grid_points.size(),result.slope * 180.0 / M_PI,result.planarity,result.scattering);
-            RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | " "center=(%.2f,%.2f,%.2f) | " "type=%s | " "points=%zu | " "slope=%.2f deg | " "normal=(%.3f,%.3f,%.3f) | " "planarity=%.3f | " "scattering=%.3f | " "lambda=[%.5f, %.5f, %.5f] | " "height_std=%.5f",index.x,index.y,cell.x,cell.y,cell.z,terrainTypeToString(cell.terrain_type),grid_points.size(),cell.slope * 180.0 / M_PI,cell.normal.x(),cell.normal.y(),cell.normal.z(),cell.planarity,cell.scattering,cell.lambda1,cell.lambda2,cell.lambda3,cell.height_std);
+            RCLCPP_INFO_THROTTLE(this->get_logger(),*this->get_clock(),1000,"grid=(%d,%d) | " "center=(%.2f,%.2f,%.2f) | " "type=%s | " "points=%zu | " "slope=%.2f deg | " "normal=(%.3f,%.3f,%.3f) | " "planarity=%.3f | " "scattering=%.3f | " "lambda=[%.5f, %.5f, %.5f] | " "height_std=%.5f | " "confidence=%.3f | " "traversability=%.3f",index.x,index.y,cell.x,cell.y,cell.z,terrainTypeToString(cell.terrain_type),grid_points.size(),cell.slope * 180.0 / M_PI,cell.normal.x(),cell.normal.y(),cell.normal.z(),cell.planarity,cell.scattering,cell.lambda1,cell.lambda2,cell.lambda3,cell.height_std,cell.confidence,cell.traversability);
         }
 
-        // terrain_analyzer::msg::TerrainAnalysis terrain_msg;
-        // terrain_msg.header = msg->header;
-        // for (const auto & cell : terrain_cells)
-        // {
-        //     terrain_msg.x.push_back(cell.x);
-        //     terrain_msg.y.push_back(cell.y);
-        //     terrain_msg.z.push_back(cell.z);
-
-        //     terrain_msg.lambda1.push_back(cell.lambda1);
-        //     terrain_msg.lambda2.push_back(cell.lambda2);
-        //     terrain_msg.lambda3.push_back(cell.lambda3);
-
-        //     terrain_msg.linearity.push_back(fused_cell.linearity);
-        //     terrain_msg.planarity.push_back(fused_cell.planarity);
-        //     terrain_msg.scattering.push_back(fused_cell.scattering);
-
-        //     terrain_msg.normal_x.push_back(fused_cell.normal.x());
-        //     terrain_msg.normal_y.push_back(fused_cell.normal.y());
-        //     terrain_msg.normal_z.push_back(fused_cell.normal.z());
-
-        //     terrain_msg.slope.push_back(fused_cell.slope);
-
-        //     terrain_msg.mean_height.push_back(fused_cell.z);
-        //     terrain_msg.height_std.push_back(fused_cell.height_std);
-
-        //     terrain_msg.residual_mean.push_back(fused_cell.residual_mean);
-        //     terrain_msg.residual_std.push_back(fused_cell.residual_std);
-
-        //     terrain_msg.outlier_ratio.push_back(fused_cell.outlier_ratio);
-        //     terrain_msg.terrain_type.push_back(fused_cell.terrain_type);
-
-        //     terrain_msg.point_count.push_back(static_cast<uint32_t>(fused_cell.point_count));
-        // }
-
-        // terrain_pub_->publish(terrain_msg);
         for (const auto & cell : terrain_cells)
         {
             const int grid_x = static_cast<int>(std::floor(cell.x / cell_size_));
@@ -542,6 +553,7 @@ class TerrainAnalyzerNode : public rclcpp::Node
       rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
       rclcpp::Publisher<terrain_analyzer::msg::TerrainAnalysis>::SharedPtr terrain_pub_;
       rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+      rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
 };
 
 int main(int argc,char ** argv)
