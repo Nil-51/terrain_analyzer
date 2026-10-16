@@ -56,20 +56,20 @@ terrain_analyzer/
 
 ## 算法原理
 
-对输入点集 $\{p_i\}$：
+对输入点集 `{p_i}`：
 
-1. **质心**：$\bar{p} = \frac{1}{N}\sum_i p_i$
-2. **协方差矩阵**：$C = \frac{1}{N}\sum_i (p_i-\bar{p})(p_i-\bar{p})^T$
-3. **特征分解**：对 $C$ 求解对称特征值问题，得到 $\lambda_1 \ge \lambda_2 \ge \lambda_3$ 及对应特征向量。
+1. **质心**：`p_mean = (1 / N) · Σ p_i`
+2. **协方差矩阵**：`C = (1 / N) · Σ (p_i - p_mean)(p_i - p_mean)^T`
+3. **特征分解**：对 `C` 求解对称特征值问题，得到 `λ1 ≥ λ2 ≥ λ3` 及对应特征向量。
 4. **特征提取**：
-   - 法向量 $\mathbf{n}$ = 最小特征值 $\lambda_3$ 对应的特征向量
-   - 坡度 $\theta = \arccos(|n_z|)$ （弧度）
-   - 线状性 $\text{linearity} = (\lambda_1-\lambda_2)/\lambda_1$
-   - 面状性 $\text{planarity} = (\lambda_2-\lambda_3)/\lambda_1$
-   - 散乱性 $\text{scattering} = \lambda_3/\lambda_1$
+   - 法向量 `n` = 最小特征值 `λ3` 对应的特征向量
+   - 坡度 `θ = acos(|n_z|)`（弧度）
+   - 线状性 `linearity = (λ1 - λ2) / λ1`
+   - 面状性 `planarity = (λ2 - λ3) / λ1`
+   - 散乱性 `scattering = λ3 / λ1`
 5. **高度统计**：对 z 分量求均值与标准差。
-6. **平面残差**：$r_i = \mathbf{n}\cdot(p_i-\bar{p})$，统计均值与标准差。
-7. **异常点比例**：残差 $r_i > \text{mean} + 3\sigma$ 的点所占比例（仅当 $\sigma > 10^{-12}$ 时计算）。
+6. **平面残差**：`r_i = n · (p_i - p_mean)`，统计均值与标准差。
+7. **异常点比例**：残差 `r_i > mean + 3σ` 的点所占比例（仅当 `σ > 1e-12` 时计算）。
 
 > 输入点数少于 3 或特征分解失败时，结果 `valid = false`。
 
@@ -94,7 +94,7 @@ terrain_analyzer/
 
 **置信度 `confidence`**——衡量该栅格分析结果的可靠程度：
 
-$$\text{confidence} = 0.5\cdot\text{point\_conf} + 0.3\cdot\text{planarity\_conf} + 0.2\cdot\text{outlier\_conf}$$
+`confidence = 0.5 · point_conf + 0.3 · planarity_conf + 0.2 · outlier_conf`
 
 其中
 
@@ -104,8 +104,9 @@ $$\text{confidence} = 0.5\cdot\text{point\_conf} + 0.3\cdot\text{planarity\_conf
 
 **可通过性 `traversability`**——衡量该栅格对机器人通行的友好程度：
 
-$$\text{slope\_score} = \max\left(0,\ 1 - \frac{\text{slope}}{30°}\right),\qquad
-\text{roughness\_score} = \max\left(0,\ 1 - \min\left(\frac{\text{scattering}}{0.1},\ 1\right)\right)$$
+`slope_score = max(0, 1 - slope / 30°)`
+
+`roughness_score = max(0, 1 - min(scattering / 0.1, 1))`
 
 - 若 `slope > 30°`：`traversability = 0`（超过最大可通行坡度直接判为不可通行）。
 - 否则：`traversability = 0.5·slope_score + 0.3·roughness_score + 0.2·confidence`。
@@ -114,7 +115,7 @@ $$\text{slope\_score} = \max\left(0,\ 1 - \frac{\text{slope}}{30°}\right),\qqua
 
 栅格已在 `terrain_map_` 中时，用指数滑动平均（硬编码 `α = 0.3`）融合新旧观测：
 
-$$\text{fused} = (1-\alpha)\cdot\text{old} + \alpha\cdot\text{new}$$
+`fused = (1 - α) · old + α · new`
 
 位置 `x`、`y`、`point_count` 直接取新观测；法向量融合后重新归一化；其余标量（含 `confidence`、`traversability`）均按上式 EMA 融合；融合完成后用融合值重新分类 `terrain_type`。
 
